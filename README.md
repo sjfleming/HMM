@@ -3,7 +3,7 @@ HMM
 
 ## What
 
-HMM is a class written in Matlab meant to simplify the implementation of the usage of hidden Markov models to decode stateful processes in (possibly noisy) biological time-series data.
+HMM is a class written in Matlab meant to simplify the usage of hidden Markov models to decode stateful processes in (possibly noisy) biological time-series data.
 
 ## Usage
 
