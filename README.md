@@ -25,7 +25,7 @@ produces an output that can be plotted like so, denoting which hidden states eac
 
 ![Simulated biological data](img/levels.png)
 
-And finally, plotting the raw data points again, this time colored by their hidden state assignments, we see that the HMM has done a great job.  The simulated data were not generated from a Markov process explicitly.  The simulation only specified the order of states, and drew their durations from an exponential distrubution.
+And finally, plotting the raw data points again, this time colored by their hidden state assignments, we see that the HMM has done a great job.  The simulated data were not generated from a Markov process explicitly.  The simulation only specified the order of states, and drew their durations from an exponential distrubution.  There were in fact 28 levels in the simulation, and the HMM finds them all.
 
 ![Simulated biological data](img/aligned.png)
 
