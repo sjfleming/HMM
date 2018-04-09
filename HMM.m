@@ -18,6 +18,7 @@ classdef HMM < handle
         T = []; % transition matrix
         E = @(x) []; % emission probability generating function
         init = []; % initial state occupancy probabilities
+        data_scaling = [1,0];
         
         % generated quantities
         viterbi_alignment = [];
@@ -141,7 +142,69 @@ classdef HMM < handle
         
     end
     
-    methods (Access = private) % only called by class methods
+    methods (Access = public) % only called by class methods
+        
+        
+        
+        function [scale, offset] = data_to_model_transformation(obj)
+            % suppose there's a linear function mapping the "true" model to
+            % the model we're using (scale and offset parameters) that are
+            % unknown.  the data were taken at a different temperature,
+            % salt concentration, whatever, so the scaling is off.  we
+            % don't have explicit access to the model state information,
+            % only the emission probability function.  we would like to
+            % apply a scaling and offset to the model states, but we can
+            % just as easily apply the inverse to the data.  then we'll
+            % know that in reality, we need to do the inverse scaling to
+            % the model.
+            % this does an L1 regression to fit the data to the model.
+            
+            % get the max likelihood emission values for each model state
+            model_means = obj.get_model_values();
+            
+            % if we haven't aligned yet, make an inital guess about the
+            % model scaling and offset by fitting a line
+            if isempty(obj.viterbi_alignment)
+            
+                % randomly grab points from model and data
+                m = datasample(model_means',500);
+                d = datasample(obj.data,500);
+
+                % sort them in order, adding noise to the model
+                blur = range(obj.data)/size(obj.T,1)/2; % empirical estimate
+                m = sort(m + randn(size(m))*blur);
+                d = sort(d);
+            
+            else
+                % we do have a viterbi alignment, so use that information
+                % to do a linear fit of model to data
+                
+                m = sort(model_means)';
+                
+                
+            end
+            
+            % fit a line and return the best fit params
+            %[scale, offset] = polyfit(m,d,1); % polynomial order 1, a line
+            p = robustfit(m,d); % better at ignoring outliers
+            offset = p(1);
+            scale = p(2);
+            
+        end
+        
+        function model_means = get_model_values(obj)
+            % we don't know the model explicitly...
+            % approximate the model levels by doing a max over emissions
+            
+            current = (min(obj.data)-100):(max(obj.data)+100); % currents
+            logEm = zeros(numel(current),size(obj.T,1)); % allocate space
+            for j = 1:numel(current) % for each current in the data range
+                logEm(j,:) = log10(obj.E(current(j))); % get emissions
+            end
+            [~,inds] = max(logEm,[],1); % max prob emission index
+            model_means = current(inds); % max prob emission current
+            
+        end
         
         function in = parse_inputs(obj, varargin)
             % parse all inputs so all methods can use them easily

@@ -57,7 +57,9 @@ figure
 a = 0;
 for i = 1:numel(pA)
     plot(a+1:(a+sum(hmm.viterbi_alignment==i)),d(hmm.viterbi_alignment==i))
-    text(a+sum(hmm.viterbi_alignment==i)/5,states{i}.level_mean+15,num2str(i),'fontsize',9)
+    if sum(hmm.viterbi_alignment==i)>0
+        text(a+sum(hmm.viterbi_alignment==i)/5,states{i}.level_mean+15,num2str(i),'fontsize',9)
+    end
     hold on
     a = a+sum(hmm.viterbi_alignment==i);
 end
