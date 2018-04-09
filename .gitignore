@@ -2,6 +2,9 @@
 Thumbs.db
 ehthumbs.db
 
+# Matlab
+*.asv
+
 # Folder config file
 Desktop.ini
 
