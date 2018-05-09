@@ -21,13 +21,13 @@ function obs_prob = emission_prob(measurement, states, p_noise)
     
     % (see doc erf, look at the CDF of a Gaussian, multiply by 2)
     % adding in p_noise as if it integrates to p_noise over (-Inf, Inf)
-    obs_prob = cell2mat(cellfun(@(s) 1 + erf(-0.7071*abs(measurement - s.level_mean)/s.level_stdv), ...
-        states, 'uniformoutput', false))' + p_noise;
+%     obs_prob = cell2mat(cellfun(@(s) 1 + erf(-0.7071*abs(measurement - s.level_mean)/s.level_stdv), ...
+%         states, 'uniformoutput', false))' + p_noise;
     
     % this is a 2-tailed p-value for a Cauchy distribution, which goes to
     % zero MUCH more slowly than a Gaussian
-%     obs_prob = cell2mat(cellfun(@(s) 1 + 2*atan(-abs(measurement-s.level_mean)/s.level_stdv)/pi, ...
-%         states, 'uniformoutput', false))' + p_noise;
+    obs_prob = cell2mat(cellfun(@(s) 1 + 2*atan(-abs(measurement-s.level_mean)/s.level_stdv)/pi, ...
+        states, 'uniformoutput', false))' + p_noise;
     
     % maybe try chi-squared PDF for 1 degree of freedom... chiPDF( (x-u)^2/sig^2 )
     % 1/(sqrt(2)*gamma(0.5)) = 0.3989422804, k = 1

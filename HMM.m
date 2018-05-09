@@ -1,5 +1,6 @@
 classdef HMM < handle
 % HMM
+%
 % Class that handles common computations for hidden Markov models.
 % Required inputs: (name, value pairs)
 % 'transition': a square matrix of transition probabilities between states
@@ -8,6 +9,13 @@ classdef HMM < handle
 % values, returns an N-element array of emission probabilities of that
 % observation from each state of the model.
 % 'data': a time-series array of M data points.
+%
+% Built for data sets with tons of observations compared to the number of
+% hidden states.  Good for time-series data where there are many noisy
+% observations of each hidden state, for example.
+%
+% Stephen Fleming
+% 5/9/2018
     
     properties
         % these properties go with the HMM object
@@ -64,6 +72,16 @@ classdef HMM < handle
             dp = zeros(size(obj.T,1), numel(obj.data), 2);
             % fill in first column, for first observation
             dp(:,1,1) = loginit + log10(obj.E(obj.data(1)));
+            
+            % precompute specified emission probs and store in matrix:
+            % this prevents tons of function calls and serves as a look up
+            % table, which is necessary for large datasets
+            % (limit the table to about 1 million points, for memory)
+            num = floor(1e6/size(obj.T,1)); % measurement resolution for emission calculation
+            range = [min(obj.scaled_data), max(obj.scaled_data)];
+            currents = linspace(range(1),range(2),num);
+            div = currents(2) - currents(1);
+            logEm = log10(obj.E(currents));
 
             % fill in the big matrix
             % each element (i,j,1) stores the log prob of the most likely path so far
@@ -71,16 +89,14 @@ classdef HMM < handle
             logT = log10(obj.T);
             for j = 2:numel(obj.data) % columns are observations
 
-                % calculate the emission probs for every model state
-                % given this observation (a column vector)
-                logEm = log10(obj.E(obj.data(j)));
+                % calculate the emission probs for (nearly) this current
+                data_ind = floor((obj.scaled_data(j) - range(1))/div) + 1;
                 
                 for i = 1:size(obj.T,1) % rows are all possible states
 
                     % all possible previous states times transition to this state
                     % times emission for this state
-                    [m, ind] = max( dp(:,j-1,1) + logT(:,i) + logEm(i)); % sum log probabilities
-                    %m = m + logEm(i); % also take into account the emission prob
+                    [m, ind] = max( dp(:,j-1,1) + logT(:,i) + logEm(i,data_ind) ); % sum log probabilities
                     dp(i,j,1) = m; % the probability of the maximally probable path to here
                     dp(i,j,2) = ind; % row index
 
@@ -90,18 +106,55 @@ classdef HMM < handle
             
             % get the most probable path by finding the last most probable state
             [~,ind] = max(dp(:,end,1)); % state index
-            z = nan(1,numel(obj.data)); % best path state indices
+            z = nan(numel(obj.data),1); % best path state indices
+            log_emissions = nan(numel(obj.data),1); % best path emission probs
             z(end) = ind;
+            data_ind = floor((obj.scaled_data(j) - range(1))/div) + 1;
+            log_emissions(end) = logEm(z(end),data_ind);
 
             % trace back through the big matrix to get the sequence of states
             for j = numel(obj.data):-1:2
 
                 z(j-1) = dp(z(j),j,2); % pointer to the previous row index, i.e. state index
+                
+                % trace through the emissions and record the emission probs
+                data_ind = floor((obj.scaled_data(j-1) - range(1))/div) + 1;
+                log_emissions(j-1) = logEm(z(j-1),data_ind);
 
             end
             
-            obj.viterbi_alignment = z;
-            alignment = z;
+            obj.viterbi_alignment.states = z;
+            obj.viterbi_alignment.log_emissions = log_emissions;
+            alignment = obj.viterbi_alignment;
+            
+        end
+        
+        function alignment = EM_viterbi(obj, max_iter, tol)
+            % a scaling and offset between the model and data is unknown.
+            % iteratively (1) estimate scaling and offset, and (2)
+            % use the Viterbi algorithm to calculate the best possible
+            % alignment of the scaled data to the model states
+            
+            if nargin < 2
+                max_iter = 10;
+            end
+            if nargin < 3
+                tol = 0.01;
+            end
+            
+            for i = 1:max_iter
+                display(['EM Viterbi alignment: iteration ' num2str(i)])
+                prev = obj.data_scaling;
+                obj.data_scaling = obj.data_to_model_transformation;
+                delta = max((obj.data_scaling - prev)./prev);
+                if delta < tol
+                    display('Tolerance achieved')
+                    break;
+                end
+                obj.viterbi;
+            end
+            
+            alignment = obj.viterbi_alignment;
             
         end
         
@@ -144,8 +197,6 @@ classdef HMM < handle
     
     methods (Access = public) % only called by class methods
         
-        
-        
         function [scale, offset] = data_to_model_transformation(obj)
             % suppose there's a linear function mapping the "true" model to
             % the model we're using (scale and offset parameters) that are
@@ -179,8 +230,9 @@ classdef HMM < handle
                 % we do have a viterbi alignment, so use that information
                 % to do a linear fit of model to data
                 
-                m = sort(model_means)';
-                
+                m = model_means(unique(obj.viterbi_alignment.states))';
+                d = accumarray(obj.viterbi_alignment.states,obj.data,[],@median);
+                d = d(d~=0);
                 
             end
             
@@ -189,6 +241,18 @@ classdef HMM < handle
             p = robustfit(m,d); % better at ignoring outliers
             offset = p(1);
             scale = p(2);
+            
+        end
+        
+        function d = scaled_data(obj, inds)
+            % return a scaled version of the data according to the object
+            % parameters in data_scaling
+            
+            if nargin < 2
+                d = obj.data*obj.data_scaling(1) + obj.data_scaling(2);
+            else
+                d = obj.data(inds)*obj.data_scaling(1) + obj.data_scaling(2);
+            end
             
         end
         
@@ -227,7 +291,6 @@ classdef HMM < handle
             addOptional(p, 'emission', [], check_emission); % emission prob function handle
             addOptional(p, 'transition', [], check_trans_matrix); % transition prob matrix
             addOptional(p, 'starting_prob', [], check_init); % starting probability array
-            %addOptional(p, 'states',
             
             % parse
             parse(p,varargin{:});
