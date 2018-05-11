@@ -8,21 +8,23 @@ close all
 %% set up the sequence
 
 % specify a sequence
-seq = 'RRRRRTTTTTGGGAAATTTTTGGGAAATTTTT';
+%seq = 'RRRRRTTTTTGGGAAATTTTTGGGAAATTTTT';
 %seq = 'RRRRRTTTTTGGGAAATTTTTGGGAAATTTTTAGCTGATTACGCTTAGCGGCAATCGGATCCCGATCGATTGGGCTAGCTTAGCGATCGACTGTCTAGGCTTTAAGCGCCCCATTCGAGGTTTAGGATCGGA';
+seq = 'TTTTTGGGAAATTTTTGGGAAATTTTTAGCTGATTACGCTTAGCGTTTTCGCAATCGGATCCCGATCGA';
 
 % get the current levels for the sequence
 measured_levels = linspace(100,300,numel(seq));
 [pA, pA_std, ~, ~, ~] = get_model_levels_M2(seq, measured_levels);
 
-% scale and offset data from model
+% scale and offset the data from the underlying model
 scale = 0.85;
 offset = 20;
 
 %% generate simulated data
 
-N = 5000;
+N = 2000;
 t = exprnd(1,1,numel(pA));
+t(1) = 2; % necessary minimum condition for indexing to work
 t = cumsum(t);
 t = round(t/t(end)*(numel(pA)-1)*N/numel(pA));
 t = t(1:end-1); % indices where level transitions happen
@@ -31,11 +33,14 @@ t = [1, t, N];
 d = zeros(N,1);
 states = cell(1,numel(pA));
 for i = 1:numel(t)-1
-    % data
-    d(t(i):t(i+1)) = pA(i)*scale + offset + randn(t(i+1)-t(i)+1,1)*pA_std(i);
     % model states cell array
     states{i}.level_mean = pA(i);
     states{i}.level_stdv = pA_std(i);
+    % data
+    if t(i+1)<=t(i)
+        continue;
+    end
+    d(t(i):t(i+1)) = pA(i)*scale + offset + randn(t(i+1)-t(i)+1,1)*pA_std(i);
 end
 
 % put in noise! (maybe...)
@@ -50,7 +55,7 @@ end
 
 p_stay = (N-numel(pA))/N;
 p_forward = numel(pA)/N;
-T = transition_matrix(numel(pA),p_forward^5,p_stay,p_forward,p_forward^2);
+T = transition_matrix(numel(pA),p_forward^30,p_stay,p_forward,p_forward^10);
 fac = p_forward; % down by this factor since you'll get on avg this many emissions per level
 hmm = HMM('data',d,'transition',T,'emission',@(x) emission_prob(x,states,p_noise) * fac);
 
@@ -58,7 +63,8 @@ hmm = HMM('data',d,'transition',T,'emission',@(x) emission_prob(x,states,p_noise
 
 sizeoffont = 14;
 
-hmm.viterbi;
+%hmm.viterbi;
+hmm.EM_viterbi;
 figure
 plot(d)
 ylabel('Current (pA)')
@@ -74,24 +80,8 @@ ylabel('Model state')
 xlabel('Time index')
 set(gca,'fontsize',sizeoffont,'outerposition',[0.01,0.01,0.98,0.98],'looseinset',[0,0,0,0])
 
-figure
-a = 0;
-threshold = log10(p_noise)+0.01;
-noise_logic = hmm.viterbi_alignment.log_emissions < threshold;
-xx = 1:numel(d);
-c = colormap(lines(numel(pA)));
-for i = 1:numel(pA)
-    state_logic = hmm.viterbi_alignment.states==i;
-    plot(xx(state_logic & ~noise_logic),d(state_logic & ~noise_logic),'color',c(i,:))
-    hold on
-    plot(xx(state_logic & noise_logic),d(state_logic & noise_logic),'o','color',c(i,:))
-    if sum(hmm.viterbi_alignment.states==i)>0
-        text(a+sum(hmm.viterbi_alignment.states==i)/5,states{i}.level_mean+15,num2str(i),'fontsize',9)
-    end
-    a = a+sum(hmm.viterbi_alignment.states==i);
-end
+hmm.plot_alignment('Simulated data after Viterbi alignment');
 ylabel('Current (pA)')
-xlabel('Time index')
-title('Simulated data after Viterbi alignment')
-set(gca,'fontsize',sizeoffont,'outerposition',[0.01,0.01,0.98,0.98],'looseinset',[0,0,0,0])
 
+display(['Found data scale = ' num2str(1/hmm.data_scaling(1),3) ', and offset = ' ...
+    num2str(-hmm.data_scaling(2)/hmm.data_scaling(1),3)])

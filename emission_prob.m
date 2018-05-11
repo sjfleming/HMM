@@ -3,7 +3,6 @@ function obs_prob = emission_prob(measurement, states, p_noise)
 % returns the 2-tailed p-value for a measured current given the expectation
 % Inputs:
 % 'measurement': a column vector of current values
-% 'measured_current_range' row 2-vector of of the entire current range
 % 'states' is an M-element cell array that contains three fields:
 %       'level_mean' level's mean current
 %       'level_stdv' standard deviation of level current
@@ -21,13 +20,13 @@ function obs_prob = emission_prob(measurement, states, p_noise)
     
     % (see doc erf, look at the CDF of a Gaussian, multiply by 2)
     % adding in p_noise as if it integrates to p_noise over (-Inf, Inf)
-%     obs_prob = cell2mat(cellfun(@(s) 1 + erf(-0.7071*abs(measurement - s.level_mean)/s.level_stdv), ...
-%         states, 'uniformoutput', false))' + p_noise;
+    obs_prob = cell2mat(cellfun(@(s) 1 + erf(-0.7071*abs(measurement - s.level_mean)/s.level_stdv), ...
+        states, 'uniformoutput', false))' + p_noise;
     
     % this is a 2-tailed p-value for a Cauchy distribution, which goes to
     % zero MUCH more slowly than a Gaussian
-    obs_prob = cell2mat(cellfun(@(s) 1 + 2*atan(-abs(measurement-s.level_mean)/s.level_stdv)/pi, ...
-        states, 'uniformoutput', false))' + p_noise;
+%     obs_prob = cell2mat(cellfun(@(s) 1 + 2*atan(-abs(measurement-s.level_mean)/s.level_stdv)/pi, ...
+%         states, 'uniformoutput', false))' + p_noise;
     
     % maybe try chi-squared PDF for 1 degree of freedom... chiPDF( (x-u)^2/sig^2 )
     % 1/(sqrt(2)*gamma(0.5)) = 0.3989422804, k = 1
@@ -39,7 +38,8 @@ function obs_prob = emission_prob(measurement, states, p_noise)
     
     % try a t-distribution
     % still 2-tailed p-value from the CDF, 1 dof
-%     obs_prob = cell2mat(cellfun(@(s) 2*tcdf(-abs(measurement-s.level_mean) / s.level_stdv, 1), ...
+%     dof = 1;
+%     obs_prob = cell2mat(cellfun(@(s) 2*tcdf(-abs(measurement-s.level_mean) / s.level_stdv, dof), ...
 %         states, 'uniformoutput', false))' + p_noise;
     % oh, for 1 dof, this seems to be identical to the Cauchy dist
     % interesting, for higher dof, this interpolates between Gaussian and

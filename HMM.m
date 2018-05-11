@@ -136,14 +136,22 @@ classdef HMM < handle
             % alignment of the scaled data to the model states
             
             if nargin < 2
-                max_iter = 10;
+                max_iter = 20;
             end
             if nargin < 3
-                tol = 0.01;
+                tol = 0.0001;
             end
+            
+            f = figure;
+            obj.data_scaling = obj.data_to_model_transformation(true);
             
             for i = 1:max_iter
                 display(['EM Viterbi alignment: iteration ' num2str(i)])
+                
+                obj.viterbi;
+                f = obj.plot_alignment(['Iteration ' num2str(i)], f);
+                drawnow;
+                
                 prev = obj.data_scaling;
                 obj.data_scaling = obj.data_to_model_transformation;
                 delta = max((obj.data_scaling - prev)./prev);
@@ -151,10 +159,53 @@ classdef HMM < handle
                     display('Tolerance achieved')
                     break;
                 end
-                obj.viterbi;
             end
             
             alignment = obj.viterbi_alignment;
+            
+        end
+        
+        function f = plot_alignment(obj, plot_title, fig)
+            % plot alignment of data to model levels
+            
+            if isempty(obj.viterbi_alignment)
+                display('Alignment has not yet been created.')
+                return;
+            end
+            
+            model_means = obj.get_model_values;
+            
+            if nargin<3
+                f = figure;
+            else
+                f = fig;
+                clf(f)
+            end
+            a = 0;
+            threshold = -6; % for "noise" alignment emission probability
+            noise_logic = obj.viterbi_alignment.log_emissions < threshold;
+            xx = 1:numel(obj.data);
+            c = colormap(lines(size(obj.T,1)));
+            for i = 1:size(obj.T,1)
+                state_logic = obj.viterbi_alignment.states==i;
+                plot(xx(state_logic & ~noise_logic),obj.data(state_logic & ~noise_logic),'color',c(i,:))
+                hold on
+                plot(xx(state_logic & noise_logic),obj.data(state_logic & noise_logic),'o','color',c(i,:))
+                if sum(obj.viterbi_alignment.states==i)>0
+                    text(a+sum(obj.viterbi_alignment.states==i)/5, ...
+                        (model_means(i)-obj.data_scaling(2))/obj.data_scaling(1)+15, num2str(i), 'fontsize',9)
+                end
+                a = a+sum(obj.viterbi_alignment.states==i);
+            end
+            ylabel('Data value')
+            xlabel('Time index')
+            if nargin<2
+                title('Viterbi alignment')
+            else
+                title(plot_title)
+            end
+            set(gca,'fontsize',14,'outerposition',[0.01,0.01,0.98,0.98],'looseinset',[0,0,0,0])
+            box on;
             
         end
         
@@ -197,7 +248,7 @@ classdef HMM < handle
     
     methods (Access = public) % only called by class methods
         
-        function [scale, offset] = data_to_model_transformation(obj)
+        function p = data_to_model_transformation(obj, naive)
             % suppose there's a linear function mapping the "true" model to
             % the model we're using (scale and offset parameters) that are
             % unknown.  the data were taken at a different temperature,
@@ -213,9 +264,14 @@ classdef HMM < handle
             % get the max likelihood emission values for each model state
             model_means = obj.get_model_values();
             
+            % is this run supposed to be from a naive starting state?
+            if nargin<2
+                naive = false;
+            end
+            
             % if we haven't aligned yet, make an inital guess about the
             % model scaling and offset by fitting a line
-            if isempty(obj.viterbi_alignment)
+            if naive || isempty(obj.viterbi_alignment)
             
                 % randomly grab points from model and data
                 m = datasample(model_means',500);
@@ -238,9 +294,14 @@ classdef HMM < handle
             
             % fit a line and return the best fit params
             %[scale, offset] = polyfit(m,d,1); % polynomial order 1, a line
-            p = robustfit(m,d); % better at ignoring outliers
-            offset = p(1);
-            scale = p(2);
+            try
+                p = robustfit(d,m); % better at ignoring outliers
+                p = fliplr(p'); % [scale, offset]
+            catch ex
+                p = [m\d, 0];
+            end
+            %offset = p(2);
+            %scale = p(1);
             
         end
         
